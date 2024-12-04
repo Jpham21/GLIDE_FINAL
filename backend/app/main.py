@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api import arduino  # Import your API routes for Arduino
+from app.api.arduino import router as arduino_router # Import your API routes for Arduino
 
 # Create the FastAPI app instance
 app = FastAPI()
@@ -15,10 +15,11 @@ app.add_middleware(
 )
 
 # Include Arduino routes with a prefix
-app.include_router(arduino.router, prefix="/arduino")
+app.include_router(arduino_router)
+
 
 # Root endpoint (Optional: Health check or welcome message)
 @app.get("/")
 def read_root():
-    return {"message": "Arduino Control API is running"}
+    return {"message": "GLIDE API is running"}
 

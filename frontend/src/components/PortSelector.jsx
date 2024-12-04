@@ -1,48 +1,43 @@
-import React, { useState, useEffect } from "react";
+import React from 'react';
 
-const PortSelector = ({ onPortSelect }) => {
-    const [ports, setPorts] = useState([]);
-    const [selectedPort, setSelectedPort] = useState("");
-    const [error, setError] = useState(null);
+const PortSelector = ({ ports, selectedPort, setSelectedPort, handleConnect, handleDisconnect, isConnected }) => {
+  const handlePortChange = (e) => {
+    setSelectedPort(e.target.value);
+  };
 
-    useEffect(() => {
-        fetchPorts();
-    }, []);
-
-    const fetchPorts = async () => {
-        setError(null);
-        try {
-            const response = await fetch("http://127.0.0.1:8000/arduino/ports");
-            if (!response.ok) throw new Error("Failed to fetch ports");
-            const data = await response.json();
-            setPorts(data);
-        } catch (error) {
-            console.error("Error fetching ports:", error.message);
-            setError("Unable to fetch ports. Ensure the backend is running.");
-        }
-    };
-
-    const handlePortChange = (event) => {
-        const port = event.target.value;
-        setSelectedPort(port);
-        onPortSelect(port);
-    };
-
-    return (
-        <div>
-            <h3>Select a Port</h3>
-            {error && <p style={{ color: "red" }}>{error}</p>}
-            <select value={selectedPort} onChange={handlePortChange}>
-                <option value="" disabled>Select a port</option>
-                {ports.map((port, index) => (
-                    <option key={index} value={port.device}>
-                        {port.description || port.device}
-                    </option>
-                ))}
-            </select>
-            <button onClick={fetchPorts}>Refresh Ports</button>
-        </div>
-    );
+  return (
+    <div className="port-selector">
+      <h2>Port Selector</h2>
+      <div className="port-selector-controls">
+        <label htmlFor="port-dropdown">Select Port:</label>
+        <select
+          id="port-dropdown"
+          value={selectedPort}
+          onChange={handlePortChange}
+          disabled={isConnected} // Disable port selection when connected
+        >
+          <option value="">Select a port</option>
+          {ports.map((port) => (
+            <option key={port} value={port}>
+              {port}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="port-selector-buttons">
+        {!isConnected ? (
+          <button onClick={handleConnect} disabled={!selectedPort}>
+            Connect
+          </button>
+        ) : (
+          <button onClick={handleDisconnect}>Disconnect</button>
+        )}
+      </div>
+      <p className={`connection-status ${isConnected ? 'connected' : 'disconnected'}`}>
+        {isConnected ? `Connected to ${selectedPort}` : 'Not connected'}
+      </p>
+    </div>
+  );
 };
 
 export default PortSelector;

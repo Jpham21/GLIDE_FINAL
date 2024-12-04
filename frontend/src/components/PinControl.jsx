@@ -1,88 +1,77 @@
-import React, { useState } from "react";
+import React, { useState } from 'react';
+import axios from 'axios';
+const { saveFileDialog } = window.electron;
+
+
+const BASE_URL = 'http://localhost:8000';
 
 const PinControl = () => {
-    const [pin, setPin] = useState("");
-    const [mode, setMode] = useState("");
-    const [state, setState] = useState("");
-    const [readValue, setReadValue] = useState(null);
-    const [error, setError] = useState(null);
+  const [pin, setPin] = useState('');
+  const [pinState, setPinState] = useState('HIGH');
+  const [runtime, setRuntime] = useState('');
 
-    const configurePin = async () => {
-        setError(null);
-        try {
-            const response = await fetch("http://127.0.0.1:8000/arduino/configure_pin", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ pin: parseInt(pin), mode: "OUTPUT" }), // Ensure mode is OUTPUT
-            });
-            if (!response.ok) throw new Error("Failed to configure pin");
-            alert(`Pin ${pin} configured as OUTPUT`);
-        } catch (error) {
-            console.error("Error configuring pin:", error.message);
-            setError("Unable to configure pin.");
-        }
-    };
-    
-    
-    const setPinState = async () => {
-        setError(null);
-        try {
-            const response = await fetch("http://127.0.0.1:8000/arduino/set_pin_state", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ pin: parseInt(pin), state }), // Ensure pin is an integer
-            });
-            if (!response.ok) throw new Error("Failed to set pin state");
-            alert(`Pin ${pin} set to ${state}`);
-        } catch (error) {
-            console.error("Error setting pin state:", error.message);
-            setError("Unable to set pin state.");
-        }
-    };
+  const handlePinChange = (e) => setPin(e.target.value);
+  const handlePinStateChange = (e) => setPinState(e.target.value);
+  const handleRuntimeChange = (e) => setRuntime(e.target.value);
 
-    const readPinState = async () => {
-        setError(null);
-        try {
-            const response = await fetch(`http://127.0.0.1:8000/arduino/read_pin_state?pin=${parseInt(pin)}`);
-            if (!response.ok) throw new Error("Failed to read pin state");
-            const data = await response.json();
-            setReadValue(data.state);
-        } catch (error) {
-            console.error("Error reading pin state:", error.message);
-            setError("Unable to read pin state.");
-        }
-    };
+  const handleRunExperiment = async () => {
+    if (pin === '') {
+      alert('Please select a pin number.');
+      return;
+    }
+  
+    if (!runtime || runtime <= 0) {
+      alert('Please specify a valid runtime duration.');
+      return;
+    }
+  
+    // Open the save dialog using the exposed API
+    const filePath = await saveFileDialog();
+  
+    if (!filePath) {
+      alert('You must select a file path to save the video.');
+      return;
+    }
+  
+    try {
+      const response = await axios.post(`${BASE_URL}/run-experiment`, {
+        pin: parseInt(pin, 10),
+        state: pinState === 'HIGH' ? 1 : 0,
+        runtime: parseInt(runtime, 10),
+        file_path: filePath, // Send the selected file path to the backend
+      });
+  
+      if (response.status === 200) {
+        alert(`Experiment and recording started successfully! Video saved as: ${response.data.message}`);
+      }
+    } catch (error) {
+      console.error('Error running experiment:', error);
+      alert('Failed to run experiment and start recording.');
+    }
+  };
+  
 
-    return (
-        <div>
-            <h3>Pin Control</h3>
-            {error && <p style={{ color: "red" }}>{error}</p>}
-            <input
-                type="number"
-                placeholder="Pin number"
-                value={pin}
-                onChange={(e) => setPin(e.target.value)}
-            />
-            <select value={mode} onChange={(e) => setMode(e.target.value)}>
-                <option value="" disabled>
-                    Select Mode
-                </option>
-                <option value="INPUT">INPUT</option>
-                <option value="OUTPUT">OUTPUT</option>
-                <option value="PWM">PWM</option>
-            </select>
-            <button onClick={configurePin}>Configure Pin</button>
-            <input
-                type="text"
-                placeholder="HIGH or LOW"
-                value={state}
-                onChange={(e) => setState(e.target.value)}
-            />
-            <button onClick={setPinState}>Set Pin State</button>
-            <button onClick={readPinState}>Read Pin State</button>
-            {readValue !== null && <p>Pin {pin} State: {readValue}</p>}
-        </div>
-    );
+  return (
+    <div>
+      <h2>Pin Control</h2>
+      <div>
+        <label>Pin Number:</label>
+        <input type="number" value={pin} onChange={handlePinChange} placeholder="0-13" min="0" max="13" />
+      </div>
+      <div>
+        <label>Pin State:</label>
+        <select value={pinState} onChange={handlePinStateChange}>
+          <option value="HIGH">HIGH</option>
+          <option value="LOW">LOW</option>
+        </select>
+      </div>
+      <div>
+        <label>Runtime (seconds):</label>
+        <input type="number" value={runtime} onChange={handleRuntimeChange} placeholder="Runtime in seconds" />
+      </div>
+      <button onClick={handleRunExperiment}>Run Experiment</button>
+    </div>
+  );
 };
 
 export default PinControl;

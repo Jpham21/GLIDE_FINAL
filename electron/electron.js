@@ -1,4 +1,4 @@
-const { app, BrowserWindow } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain } = require("electron");
 const path = require("path");
 
 let mainWindow;
@@ -10,8 +10,10 @@ app.on("ready", () => {
         minWidth: 800, // Minimum width
         minHeight: 600, // Minimum height
         webPreferences: {
-            nodeIntegration: true,
-            contextIsolation: false,
+            preload: path.join(__dirname, 'preload.js'),
+            contextIsolation: true,
+            enableRemoteModule: false,
+            nodeIntegration: false,
         },
     });
 
@@ -21,6 +23,16 @@ app.on("ready", () => {
 
    mainWindow.webContents.openDevTools();
 });
+
+ipcMain.handle('dialog:save-file', async () => {
+    const result = await dialog.showSaveDialog({
+      title: 'Save Experiment Video',
+      defaultPath: 'Untitled.mp4',
+      filters: [{ name: 'Videos', extensions: ['mp4'] }],
+    });
+  
+    return result.filePath; // Return the selected file path
+  });
 
 app.on("window-all-closed", () => {
     if (process.platform !== "darwin") {
