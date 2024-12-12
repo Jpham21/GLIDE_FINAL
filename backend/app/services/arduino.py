@@ -2,7 +2,6 @@ import serial
 from serial.tools import list_ports
 import cv2
 import os
-import threading
 import time
 from datetime import datetime
 
@@ -20,6 +19,8 @@ def connect_arduino(port: str):
     global arduino_connection
     try:
         arduino_connection = serial.Serial(port=port, baudrate=9600, timeout=1)
+        time.sleep(2)  # Allow Arduino to reset
+        arduino_connection.flushInput()  # Clear residual data
         return {"message": "Connected successfully"}
     except serial.SerialException as e:
         return {"error": f"Error connecting to Arduino: {e}"}
@@ -41,21 +42,35 @@ def send_command(command: str):
     global arduino_connection
     try:
         if arduino_connection and arduino_connection.is_open:
+            # Clear the serial buffer
+            while arduino_connection.in_waiting > 0:
+                arduino_connection.readline()
+
             arduino_connection.write(f"{command}\n".encode())
-            return {"message": "Command sent successfully"}
+            time.sleep(0.1)  # Allow Arduino time to process
+
+            # Read and return the response
+            if arduino_connection.in_waiting > 0:
+                response = arduino_connection.readline().decode().strip()
+                print(f"Arduino response: {response}")
+                return response
+            return "No response from Arduino"
         return {"error": "Arduino is not connected"}
     except Exception as e:
         return {"error": f"Error sending command: {e}"}
 
+
+# Function to list available cameras
 def list_cameras():
     available_cameras = []
-    for i in range(10):  # Check indices 0-9 for cameras
+    for i in range(5):  # Check up to 5 camera indices
         cap = cv2.VideoCapture(i)
         if cap.isOpened():
             available_cameras.append(f"Camera {i}")
             cap.release()
     return available_cameras
 
+# Function to connect to a camera
 def connect_camera(camera_index: int):
     global camera
     if camera is not None and camera.isOpened():
@@ -66,10 +81,10 @@ def connect_camera(camera_index: int):
         return {"error": f"Unable to access camera {camera_index}."}
     return {"message": f"Camera {camera_index} connected successfully."}
 
+# Function to check camera status
 def camera_status():
     global camera
     return camera is not None and camera.isOpened()
-
 
 # Function to run an experiment with recording
 def run_experiment_with_recording(pin, state, runtime, file_path):
@@ -81,40 +96,102 @@ def run_experiment_with_recording(pin, state, runtime, file_path):
     if camera is None or not camera.isOpened():
         return {"error": "Camera is not connected."}
 
-    if not file_path:
+    if not file_path or not isinstance(file_path, str):
         return {"error": "Invalid file path provided."}
 
-    # Set up video writer
-    fourcc = cv2.VideoWriter_fourcc(*'m', 'p', '4', 'v')  # MP4 codec
-    fps = int(camera.get(cv2.CAP_PROP_FPS)) or 30  # Default to 30 FPS
-    frame_width = int(camera.get(cv2.CAP_PROP_FRAME_WIDTH))
-    frame_height = int(camera.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    video_writer = cv2.VideoWriter(file_path, fourcc, fps, (frame_width, frame_height))
+    try:
+        # Initialize video writer
+        fps = 30.0
+        frame_width = int(camera.get(cv2.CAP_PROP_FRAME_WIDTH))
+        frame_height = int(camera.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        video_writer = cv2.VideoWriter(file_path, fourcc, fps, (frame_width, frame_height))
+        print(f"Video writer initialized: {file_path}")
 
-    # Start video recording in a separate thread
-    def record_video():
-        start_time = time.time()
-        while time.time() - start_time < runtime:
+        # Start experiment
+        send_command(f"SET_PIN {pin} {state}")
+        send_command(f"SET_RUNTIME {runtime * 1000}")
+        send_command("START_EXPERIMENT")
+
+        # Allow camera to warm up
+        time.sleep(0.5)
+        for _ in range(10):
+            camera.read()
+
+        # Record video
+        total_frames = int(runtime * fps)
+        for frame_count in range(total_frames):
             ret, frame = camera.read()
             if ret:
                 video_writer.write(frame)
-        video_writer.release()
+                print(f"Frame {frame_count + 1}/{total_frames} captured.")
+            else:
+                print(f"Failed to capture frame {frame_count + 1}")
+                break
 
-    video_thread = threading.Thread(target=record_video)
-    video_thread.start()
+        # Stop experiment
+        send_command("STOP_EXPERIMENT")
+    except Exception as e:
+        return {"error": f"Error during experiment: {e}"}
+    finally:
+        if video_writer:
+            video_writer.release()
 
-    # Send commands to Arduino to start the experiment
-    send_command(f"SET_PIN {pin} {state}")
-    send_command(f"SET_RUNTIME {runtime * 1000}")  # Convert runtime to milliseconds
-    send_command("START_EXPERIMENT")
+    return {"message": f"Experiment completed. Video saved to {file_path}"}
 
-    # Wait for the experiment and recording duration
-    time.sleep(runtime)
+# Function to run beam break experiment
+def run_beam_experiment(runtime, beam_pin, led_pin, file_path):
+    global arduino_connection, camera, video_writer
 
-    # Stop the experiment
-    send_command("STOP_EXPERIMENT")
+    if arduino_connection is None or not arduino_connection.is_open:
+        return {"error": "Arduino is not connected."}
 
-    # Wait for video recording to finish
-    video_thread.join()
+    if camera is None or not camera.isOpened():
+        return {"error": "Camera is not connected."}
 
-    return {"message": f"Experiment and recording completed. Video saved to {file_path}"}
+    if not file_path or not isinstance(file_path, str):
+        return {"error": "Invalid file path provided."}
+
+    try:
+        # Configure beam break sensor and LED pins
+        response = send_command(f"SET_BEAM_LED {beam_pin} {led_pin}")
+        if "configured" not in response.lower():
+            return {"error": f"Unexpected Arduino response: {response}"}
+
+        # Initialize video writer
+        fps = 30.0
+        frame_width = int(camera.get(cv2.CAP_PROP_FRAME_WIDTH))
+        frame_height = int(camera.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        video_writer = cv2.VideoWriter(file_path, fourcc, fps, (frame_width, frame_height))
+        print(f"Video writer initialized: {file_path}")
+
+        # Start experiment
+        send_command(f"SET_RUNTIME {runtime * 1000}")
+        send_command("START_EXPERIMENT")
+
+        # Allow camera to warm up
+        time.sleep(0.5)
+        for _ in range(10):
+            camera.read()
+
+        # Record video
+        total_frames = int(runtime * fps)
+        for frame_count in range(total_frames):
+            ret, frame = camera.read()
+            if ret:
+                video_writer.write(frame)
+                print(f"Frame {frame_count + 1}/{total_frames} captured.")
+            else:
+                print(f"Failed to capture frame {frame_count + 1}")
+                break
+
+        # Stop experiment
+        send_command("STOP_EXPERIMENT")
+    except Exception as e:
+        return {"error": f"Error during beam break experiment: {e}"}
+    finally:
+        if video_writer:
+            video_writer.release()
+
+    return {"message": f"Beam break experiment completed. Video saved to {file_path}"}

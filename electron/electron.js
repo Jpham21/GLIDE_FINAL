@@ -1,6 +1,7 @@
 const { app, BrowserWindow, dialog, ipcMain } = require("electron");
 const path = require("path");
 
+
 let mainWindow;
 
 app.on("ready", () => {
@@ -21,7 +22,7 @@ app.on("ready", () => {
     // Load the React build into the Electron window
     mainWindow.loadFile(path.join(__dirname, "../frontend/dist/index.html"));
 
-   mainWindow.webContents.openDevTools();
+   //mainWindow.webContents.openDevTools();
 });
 
 ipcMain.handle('dialog:save-file', async () => {

@@ -4,7 +4,7 @@
     "description": "Arduino control application",
     "scripts": {
         "start:backend": "cd backend && ./start_backend.sh",
-        "start:frontend": "cd frontend && npm run dev",
+        "start:frontend": "cd frontend && npm run build",
         "start:electron": "cd electron && npm start",
         "start": "concurrently \"npm run start:backend\" \"npm run start:frontend\" \"npm run start:electron\""
     },

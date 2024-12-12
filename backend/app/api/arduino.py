@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+from typing import Dict
 from app.services.arduino import (
     list_available_ports,
     connect_arduino,
@@ -8,7 +9,10 @@ from app.services.arduino import (
     camera_status,
     connect_camera,
     list_cameras,
-    run_experiment_with_recording
+    run_experiment_with_recording,
+    # configure_beam_and_led,
+    # start_experiment_with_beam,
+    run_beam_experiment
 )
 
 router = APIRouter()
@@ -26,7 +30,20 @@ class ExperimentParams(BaseModel):
     pin: int
     state: int
     runtime: int  # Runtime in seconds
-    file_path: str # Optional video name
+    file_path: str
+
+# class ConfigureBeams(BaseModel):
+#     beam_pin: int
+#     led_pin: int
+
+class BeamAndLedParams(BaseModel):
+    beam_pin: int
+    led_pin: int
+    runtime: int
+    file_path: str
+
+# class ExperimentDuration(BaseModel):
+#     runtime: int  # Experiment runtime in milliseconds
 
 @router.get("/ports")
 def get_ports():
@@ -66,12 +83,38 @@ def get_camera_status():
     return {"connected": camera_status()}
 
 @router.post("/run-experiment")
-def run_experiment(params: ExperimentParams):
-    if not camera_status():
-        raise HTTPException(status_code=400, detail="Camera is not connected.")
-    
-    response = run_experiment_with_recording(params.pin, params.state, params.runtime, params.file_path)
+def run_experiment_route(params: ExperimentParams):
+    print("Received run-experiment request:", params)
+    response = run_experiment_with_recording(
+        params.pin, params.state, params.runtime, params.file_path
+    )
     if "error" in response:
-        raise HTTPException(status_code=500, detail=response["error"])
+        raise HTTPException(status_code=400, detail=response["error"])
     return response
 
+
+# @router.post("/configure-beam-led")
+# def configure_beam_led(params: ConfigureBeams):
+#     response = configure_beam_and_led(params.beam_pin, params.led_pin)
+#     if "error" in response:
+#         raise HTTPException(status_code=500, detail=response["error"])
+#     return response
+
+
+# @router.post("/start-experiment")
+# def start_experiment(params: ExperimentDuration):
+#     response = start_experiment_with_beam(params.runtime)
+#     if "error" in response:
+#         raise HTTPException(status_code=500, detail=response["error"])
+#     return response
+
+
+@router.post("/run-beam-experiment")
+def run_beam_experiment_route(params: BeamAndLedParams):
+    print(f"Received params: {params.dict()}")
+    response = run_beam_experiment(
+        params.runtime, params.beam_pin, params.led_pin, params.file_path
+    )
+    if "error" in response:
+        raise HTTPException(status_code=400, detail=response["error"])
+    return response
